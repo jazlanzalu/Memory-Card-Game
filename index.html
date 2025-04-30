@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Memory Card Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f8ff;
+            padding: 20px;
+            min-height: 100vh;
+            margin: 0;
+        }
+        h1 {
+            color: #2c3e50;
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+        }
+        #game-board {
+            display: grid;
+            gap: clamp(5px, 1vw, 10px);
+            margin: 20px 0;
+            width: min(100%, 600px);
+            padding: 10px;
+        }
+        .card {
+            aspect-ratio: 1;
+            background-color: #3498db;
+            color: white;
+            border-radius: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: clamp(16px, 3vw, 22px);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .card.flipped {
+            background-color: #ecf0f1;
+            color: #2c3e50;
+            transform: rotateY(180deg);
+        }
+        .card.matched {
+            visibility: hidden;
+        }
+        #stats {
+            margin: 20px 0;
+            font-size: clamp(14px, 3vw, 18px);
+            text-align: center;
+        }
+        #player-scores {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: clamp(10px, 2vw, 20px);
+            margin-bottom: 10px;
+        }
+        .player-score {
+            padding: clamp(3px, 1vw, 5px) clamp(5px, 2vw, 10px);
+            border-radius: 5px;
+            font-size: clamp(12px, 2.5vw, 16px);
+        }
+        .active-player {
+            background-color: #2ecc71;
+            color: white;
+        }
+        button {
+            padding: clamp(5px, 2vw, 10px) clamp(10px, 3vw, 20px);
+            font-size: clamp(12px, 2.5vw, 16px);
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        #game-mode {
+            margin: 10px 0;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+        #game-over {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            color: white;
+            text-align: center;
+            z-index: 1000;
+        }
+        #game-over h2 {
+            font-size: clamp(1.5rem, 5vw, 3rem);
+            color: #ffd700;
+            text-shadow: 2px 2px 4px #000;
+            margin-bottom: 20px;
+        }
+        #game-over p {
+            font-size: clamp(1rem, 3vw, 1.5rem);
+            margin: 10px 0;
+        }
+        #game-over button {
+            background-color: #ff4500;
+            padding: clamp(8px, 2vw, 12px) clamp(15px, 3vw, 25px);
+            font-size: clamp(14px, 2.5vw, 18px);
+            transition: transform 0.2s;
+        }
+        #game-over button:hover {
+            transform: scale(1.1);
+        }
+        .celebration {
+            background: linear-gradient(45deg, #ff4500, #ffd700);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.7);
+        }
+        
+        @media (max-width: 600px) {
+            #game-board.three-player {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+        @media (max-width: 400px) {
+            #game-board {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            #game-board.three-player {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Memory Card Game</h1>
+    <div id="game-mode">
+        <button id="single-player-btn">Single Player</button>
+        <button id="two-player-btn">2 Players</button>
+        <button id="three-player-btn">3 Players</button>
+    </div>
+    <div id="stats">
+        <div id="player-scores"></div>
+        Moves: <span id="moves">0</span> | 
+        Pairs found: <span id="pairs">0</span>/<span id="total-pairs">8</span>
+    </div>
+    <div id="game-board"></div>
+    <button id="reset-btn">Reset Game</button>
+    <div id="game-over">
+        <div class="celebration">
+            <h2>Game Over!</h2>
+            <div id="game-over-message"></div>
+            <button id="play-again-btn">Play Again</button>
+        </div>
+    </div>
+
+    <audio id="background-music" loop>
+        <source src="https://www.bensound.com/bensound-music/bensound-ukulele.mp3" type="audio/mpeg">
+        Your browser does not support the audio element.
+    </audio>
+
+    <script>
+        const baseEmojis = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼'];
+        const extraEmojis = ['🦁', '🐘', '🐯', '🐨', '🦒', '🐵', '🦝', '🐸'];
+        let emojis = baseEmojis;
+        let cards = [...emojis, ...emojis];
+        let flippedCards = [];
+        let matchedCards = [];
+        let moves = 0;
+        let canFlip = true;
+        let gameMode = 'single';
+        let players = [];
+        let currentPlayerIndex = 0;
+        let totalPairs = 8;
+
+        const gameBoard = document.getElementById('game-board');
+        const movesDisplay = document.getElementById('moves');
+        const pairsDisplay = document.getElementById('pairs');
+        const totalPairsDisplay = document.getElementById('total-pairs');
+        const resetBtn = document.getElementById('reset-btn');
+        const playerScoresDiv = document.getElementById('player-scores');
+        const singlePlayerBtn = document.getElementById('single-player-btn');
+        const twoPlayerBtn = document.getElementById('two-player-btn');
+        const threePlayerBtn = document.getElementById('three-player-btn');
+        const backgroundMusic = document.getElementById('background-music');
+        const gameOverScreen = document.getElementById('game-over');
+        const gameOverMessage = document.getElementById('game-over-message');
+        const playAgainBtn = document.getElementById('play-again-btn');
+
+        function initializeGame() {
+            try {
+                console.log('Initializing game for mode:', gameMode);
+                // Set emojis and cards based on game mode
+                if (gameMode === 'three') {
+                    emojis = [...baseEmojis, ...extraEmojis];
+                    cards = [...emojis, ...emojis];
+                    totalPairs = 16;
+                    gameBoard.classList.add('three-player');
+                    gameBoard.style.gridTemplateColumns = 'repeat(8, 1fr)';
+                } else {
+                    emojis = baseEmojis;
+                    cards = [...emojis, ...emojis];
+                    totalPairs = 8;
+                    gameBoard.classList.remove('three-player');
+                    gameBoard.style.gridTemplateColumns = 'repeat(4, 1fr)';
+                }
+
+                const shuffledCards = shuffleArray([...cards]);
+                gameBoard.innerHTML = '';
+                flippedCards = [];
+                matchedCards = [];
+                moves = 0;
+                movesDisplay.textContent = moves;
+                pairsDisplay.textContent = '0';
+                totalPairsDisplay.textContent = totalPairs;
+                gameOverScreen.style.display = 'none';
+
+                if (gameMode === 'single') {
+                    players = [{ score: 0 }];
+                } else if (gameMode === 'two') {
+                    players = [{ score: 0 }, { score: 0 }];
+                } else if (gameMode === 'three') {
+                    players = [{ score: 0 }, { score: 0 }, { score: 0 }];
+                }
+                currentPlayerIndex = 0;
+                updatePlayerScores();
+
+                shuffledCards.forEach((emoji, index) => {
+                    const card = document.createElement('div');
+                    card.classList.add('card');
+                    card.dataset.index = index;
+                    card.dataset.value = emoji;
+                    card.textContent = '?';
+                    card.addEventListener('click', flipCard);
+                    gameBoard.appendChild(card);
+                });
+
+                console.log('Game board initialized with', shuffledCards.length, 'cards');
+                playBackgroundMusic();
+            } catch (error) {
+                console.error('Error initializing game:', error);
+                alert('Failed to initialize game. Please check the console for details.');
+            }
+        }
+
+        function playBackgroundMusic() {
+            try {
+                console.log('Attempting to play background music...');
+                const playPromise = backgroundMusic.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.log('Auto-play prevented:', error);
+                        document.addEventListener('click', tryPlayMusic, { once: true });
+                    });
+                }
+            } catch (error) {
+                console.error('Error playing background music:', error);
+            }
+        }
+
+        function tryPlayMusic() {
+            try {
+                backgroundMusic.play().catch(error => {
+                    console.log('Music play failed:', error);
+                });
+            } catch (error) {
+                console.error('Error in tryPlayMusic:', error);
+            }
+        }
+
+        function flipCard() {
+            if (!canFlip || this.classList.contains('flipped') || flippedCards.length >= 2) return;
+
+            try {
+                this.classList.add('flipped');
+                this.textContent = this.dataset.value;
+                flippedCards.push(this);
+
+                if (flippedCards.length === 2) {
+                    moves++;
+                    movesDisplay.textContent = moves;
+                    canFlip = false;
+                    checkForMatch();
+                }
+            } catch (error) {
+                console.error('Error flipping card:', error);
+            }
+        }
+
+        function checkForMatch() {
+            try {
+                const [card1, card2] = flippedCards;
+
+                if (card1.dataset.value === card2.dataset.value) {
+                    card1.classList.add('matched');
+                    card2.classList.add('matched');
+                    matchedCards.push(card1, card2);
+                    pairsDisplay.textContent = matchedCards.length / 2;
+
+                    players[currentPlayerIndex].score++;
+                    updatePlayerScores();
+
+                    if (matchedCards.length === cards.length) {
+                        setTimeout(() => {
+                            endGame();
+                        }, 500);
+                    } else {
+                        flippedCards = [];
+                        canFlip = true;
+                    }
+                } else {
+                    setTimeout(() => {
+                        card1.classList.remove('flipped');
+                        card2.classList.remove('flipped');
+                        card1.textContent = '?';
+                        card2.textContent = '?';
+                        flippedCards = [];
+
+                        if (gameMode !== 'single') {
+                            currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+                            updatePlayerScores();
+                        }
+
+                        canFlip = true;
+                    }, 1000);
+                }
+            } catch (error) {
+                console.error('Error checking for match:', error);
+            }
+        }
+
+        function updatePlayerScores() {
+            try {
+                playerScoresDiv.innerHTML = '';
+
+                players.forEach((player, index) => {
+                    const playerScore = document.createElement('div');
+                    playerScore.classList.add('player-score');
+                    if (index === currentPlayerIndex && gameMode !== 'single') {
+                        playerScore.classList.add('active-player');
+                    }
+                    playerScore.textContent = `Player ${index + 1}: ${player.score}`;
+                    playerScoresDiv.appendChild(playerScore);
+                });
+            } catch (error) {
+                console.error('Error updating player scores:', error);
+            }
+        }
+
+        function endGame() {
+            try {
+                console.log('Game over, displaying results...');
+                backgroundMusic.pause();
+                backgroundMusic.currentTime = 0;
+                gameOverScreen.style.display = 'flex';
+
+                let message = '';
+                if (gameMode === 'single') {
+                    message = `<p>Congratulations! You completed the game in ${moves} moves!</p>`;
+                } else {
+                    message = '<p>Final Scores:</p>';
+                    let maxScore = 0;
+                    players.forEach((player, index) => {
+                        message += `<p>Player ${index + 1}: ${player.score} pairs</p>`;
+                        if (player.score > maxScore) {
+                            maxScore = player.score;
+                        }
+                    });
+
+                    const winners = players.filter(player => player.score === maxScore);
+                    if (winners.length === 1) {
+                        message += `<p><strong>Player ${players.indexOf(winners[0]) + 1} wins!</strong></p>`;
+                    } else {
+                        message += `<p><strong>It's a tie between ${winners.map((_, index) => `Player ${players.indexOf(winners[index]) + 1}`).join(' and ')}!</strong></p>`;
+                    }
+                }
+
+                gameOverMessage.innerHTML = message;
+            } catch (error) {
+                console.error('Error ending game:', error);
+                alert('Error displaying game over screen. Please check the console.');
+            }
+        }
+
+        function shuffleArray(array) {
+            try {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+                return array;
+            } catch (error) {
+                console.error('Error shuffling array:', error);
+                return array;
+            }
+        }
+
+        resetBtn.addEventListener('click', () => {
+            try {
+                console.log('Resetting game...');
+                backgroundMusic.pause();
+                backgroundMusic.currentTime = 0;
+                initializeGame();
+            } catch (error) {
+                console.error('Error resetting game:', error);
+            }
+        });
+
+        singlePlayerBtn.addEventListener('click', () => {
+            try {
+                console.log('Starting single player mode...');
+                gameMode = 'single';
+                initializeGame();
+            } catch (error) {
+                console.error('Error starting single player mode:', error);
+            }
+        });
+
+        twoPlayerBtn.addEventListener('click', () => {
+            try {
+                console.log('Starting two player mode...');
+                gameMode = 'two';
+                initializeGame();
+            } catch (error) {
+                console.error('Error starting two player mode:', error);
+            }
+        });
+
+        threePlayerBtn.addEventListener('click', () => {
+            try {
+                console.log('Starting three player mode...');
+                gameMode = 'three';
+                initializeGame();
+            } catch (error) {
+                console.error('Error starting three player mode:', error);
+            }
+        });
+
+        playAgainBtn.addEventListener('click', () => {
+            try {
+                console.log('Playing again...');
+                initializeGame();
+            } catch (error) {
+                console.error('Error playing again:', error);
+            }
+        });
+
+        // Initialize game on load
+        try {
+            console.log('Starting initial game load...');
+            initializeGame();
+        } catch (error) {
+            console.error('Error during initial game load:', error);
+            alert('Failed to load game. Please check the console for details.');
+        }
+
+        // Adjust layout on window resize
+        window.addEventListener('resize', () => {
+            try {
+                gameBoard.style.display = 'none';
+                setTimeout(() => {
+                    gameBoard.style.display = 'grid';
+                }, 0);
+            } catch (error) {
+                console.error('Error on window resize:', error);
+            }
+        });
+    </script>
+</body>
+</html>
